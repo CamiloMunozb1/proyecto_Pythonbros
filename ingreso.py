@@ -37,11 +37,11 @@ def registro_user():
 
         # Verificadores de entrada.
         if not all([user_name,user_lastname,user_email,user_password]):
-            return jsonify({"Error": "Todos los campos deben estar completos"}),400
+            return jsonify({"error": "Todos los campos deben estar completos"}),400
         if not re.fullmatch(verificador_email, user_email):
-            return jsonify({"Error": "Correo invalido"}),400
+            return jsonify({"error": "Correo invalido"}),400
         if not re.fullmatch(verificador_password, user_password):
-            return jsonify({"Error": "La contraseña debe tener al menos 6 caracteres"}), 400
+            return jsonify({"error": "La contraseña debe tener al menos 6 caracteres"}), 400
 
         #Conexiones y peticiones a la base de datos.
         conn = conexion_db()
@@ -63,13 +63,13 @@ def registro_user():
 
 def generar_numero_unico():
 
-    # Conexion can base de datos
+    # Conexion can base de datos.
     conn = conexion_db()
     cursor = conn.cursor()
 
-    # Inspeccion a la base de datos para no encontrar numeros repetidos
+    # Inspeccion a la base de datos para no encontrar numeros repetidos.
     while True:
-        # Generacion de numeros de 11 digitos aleatorios
+        # Generacion de numeros de 11 digitos aleatorios.
         user_number = ''.join([str(random.randint(0,9))for _ in range(11)])
         # Busqueda de numeros repetidos
         cursor.execute("SELECT 1 FROM usuario WHERE user_number = ?",(user_number,))
@@ -79,3 +79,49 @@ def generar_numero_unico():
         if resultado is None:
             conn.close()
             return user_number
+
+
+# Ruta para el login de usuario.
+@app.route("/login", methods = ["POST"])
+def login():
+    try:
+        # Abre el archivo Json.
+        data = request.get_json()
+
+        # Ingreso de usuario por medio del email y contraseña registrada.
+        user_email = data.get("email", "").strip()
+        user_password = data.get("password", "").strip()
+
+        # verificador de email y contraseña.
+        verificador_email = r"[a-zA-Z-0-9]+@[a-zA-Z]+\.[a-z-.]+$"
+        verificador_password = r"^[a-zA-Z0-9@#$%^&+=]{6,}$"
+
+        # validacion de campos.
+        if not user_email or not user_password:
+            return jsonify({"error" : "los campos deben estar completos."}),400
+        if not re.fullmatch(verificador_email,user_email):
+            return jsonify({"error" : "correo invalido"}),400
+        if not re.fullmatch(verificador_password, user_password):
+            return jsonify({"error" : "contraseña no valida"}),400
+        
+        # Consulta a la base de usuario.
+        conn = conexion_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_password FROM usuario WHERE user_email",(user_email,))
+        row = cursor.fetchone()
+
+        # Busqueda de contraseña hasheada en la tabla.
+        if row and bcrypt.checkpw(user_password.encode("utf-8"),row["user_password"]):
+            conn.close()
+            return jsonify({"mensaje":"login exitoso."}),200
+        else:
+            conn.close()
+            return jsonify({"error":"usuario no encontrado"}),401
+    
+    # Manejo de errores.
+    except sqlite3.Error as error:
+        return jsonify({"error" : f"error inesperado en la base de datos {str(error)}"}),500
+    except Exception as error:
+        return jsonify({"error": f"error inesperado {str(error)}"}),500
+
+
