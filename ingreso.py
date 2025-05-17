@@ -125,3 +125,45 @@ def login():
         return jsonify({"error": f"error inesperado {str(error)}"}),500
 
 
+# Ruta para el perfil del usuario
+@app.route("/profile", methods = ["GET"])
+def profile():
+    try:
+        # Autorizacion en el header y Bearer Correo
+        auth = request.headers.get("Authorization")
+
+        if not auth or not auth.startswith("Bearer "):
+            return jsonify({"error": "error de autentificacion"}),401
+        
+        # Extraccion del correo desde el header.
+        user_email = auth.replace("Bearer", "").strip()
+        
+        # Peticion de nombre, apellido, email y numero de usuario a la base de datos.
+        conn = conexion_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+                    SELECT * 
+                    FROM usuarios
+                    WHERE user_email = ?
+                    """,(user_email,))
+        row = cursor.fetchone()
+        conn.close()
+
+        #  Visualizacion de los datos del usuario
+        if row:
+            perfil = {
+                "name": row["user_name"],
+                "lastname": row["user_lastname"],
+                "email": row["user_email"],
+                "number": row["user_number"]
+            }
+            return jsonify(perfil), 200
+        else:
+            return jsonify({"error": "usuario no encontrado"}),404
+    
+    # Manejo de errores
+    except Exception as error:
+        return jsonify({"error": f"error inesperado: {str(error)}"}),500
+
+
+
