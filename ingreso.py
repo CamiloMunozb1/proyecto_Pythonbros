@@ -129,7 +129,7 @@ def login():
 @app.route("/profile", methods = ["GET"])
 def profile():
     try:
-        # Autorizacion en el header y Bearer Correo
+        # Autorizacion en el header y Bearer al Correo
         auth = request.headers.get("Authorization")
 
         if not auth or not auth.startswith("Bearer "):
@@ -166,4 +166,45 @@ def profile():
         return jsonify({"error": f"error inesperado: {str(error)}"}),500
 
 
+@app.route("/mensajeria", methods = ["GET"])
+def envio_mensajes():
+    try:
+        # Autorizacion en el header y Bearer al Correo.
+        auth = request.headers.get("Authorization")
+
+        if not auth or not auth.startswith("Bearer "):
+            return jsonify({"error": "error de autentificacion"}),401
+        
+        # El email mantiene la sesion abierta para mandar los mensajes.
+        user_email = auth.replace("Bearer", "").strip()
+
+        # Peticiones a la base de datos.
+        conn = conexion_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+                    SELECT reminente_email, mensaje
+                    FROM mensajes
+                    WHERE destinatario_email = ?
+                """, (user_email,))
+        mensajes = cursor.fetchall()
+        conn.close()
+
+        # Visualizacion de los mensajes de usuario.
+        mensajes_json = [
+            {
+                "reminente": mensaje[0],
+                "mensaje" : mensaje[1],
+                "fecha_envio" : mensaje[2],
+            }
+            # Se busca el mensaje en la base de datos.
+            for mensaje in mensajes
+        ]
+        # Se retorna el mensaje.
+        return jsonify(mensajes_json), 200
+
+    # Manejo de errores.
+    except sqlite3.Error as error:
+        return jsonify({"error" : f"error en la base de datos : {str(error)}."}),500
+    except Exception as error:
+        return jsonify({"error" : f"error inesperado: {str(error)}"}),500
 
