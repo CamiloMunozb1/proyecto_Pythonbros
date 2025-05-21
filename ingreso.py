@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 import sqlite3
 import random
 import re
+import datetime
 import bcrypt
 
 # Identificador de Flask
@@ -47,7 +48,7 @@ def registro_user():
         conn = conexion_db()
         cursor = conn.cursor()
         cursor.execute("""
-                    INSERT INTO usuario(user_name,user_lastname,user_email,user_password,user_number) VALUES (?,?,?,?,?)
+                    INSERT INTO usuarios(user_name,user_lastname,user_email,user_password,user_number) VALUES (?,?,?,?,?)
                     """,(user_name,user_lastname,user_email,encriptador_password,user_number))
         conn.commit()
         conn.close()
@@ -72,7 +73,7 @@ def generar_numero_unico():
         # Generacion de numeros de 11 digitos aleatorios.
         user_number = ''.join([str(random.randint(0,9))for _ in range(11)])
         # Busqueda de numeros repetidos
-        cursor.execute("SELECT 1 FROM usuario WHERE user_number = ?",(user_number,))
+        cursor.execute("SELECT 1 FROM usuarios WHERE user_number = ?",(user_number,))
         resultado = cursor.fetchone()
 
         # si el numero no esta se manda el generado a la logica de login.
@@ -107,7 +108,7 @@ def login():
         # Consulta a la base de usuario.
         conn = conexion_db()
         cursor = conn.cursor()
-        cursor.execute("SELECT user_password FROM usuario WHERE user_email",(user_email,))
+        cursor.execute("SELECT user_password FROM usuarios WHERE user_email = ?",(user_email,))
         row = cursor.fetchone()
 
         # Busqueda de contraseña hasheada en la tabla.
@@ -167,11 +168,12 @@ def profile():
 
 
 @app.route("/mensajeria", methods = ["GET"])
-def envio_mensajes():
+def registo_mensajes():
     try:
         # Autorizacion en el header y Bearer al Correo.
         auth = request.headers.get("Authorization")
 
+        # Validacion de las autorizaciones.
         if not auth or not auth.startswith("Bearer "):
             return jsonify({"error": "error de autentificacion"}),401
         
@@ -182,7 +184,7 @@ def envio_mensajes():
         conn = conexion_db()
         cursor = conn.cursor()
         cursor.execute("""
-                    SELECT reminente_email, mensaje
+                    SELECT reminente_email, mensaje, fecha_envio
                     FROM mensajes
                     WHERE destinatario_email = ?
                 """, (user_email,))
@@ -192,7 +194,7 @@ def envio_mensajes():
         # Visualizacion de los mensajes de usuario.
         mensajes_json = [
             {
-                "reminente": mensaje[0],
+                "remitente": mensaje[0],
                 "mensaje" : mensaje[1],
                 "fecha_envio" : mensaje[2],
             }
@@ -208,3 +210,50 @@ def envio_mensajes():
     except Exception as error:
         return jsonify({"error" : f"error inesperado: {str(error)}"}),500
 
+@app.route("/mensajeria", methods = ["POST"])
+def envio_mensaje():
+    try:
+        # Autorizacion en el header y bearer.
+        auth = request.headers.get("Authorization")
+
+        # Validacion de las autorizaciones.
+        if not auth or not auth.startswith("Bearer "):
+            return jsonify({"error" : "error de autentificacion."}),401
+        
+        # Se usa el email registrado por el remitente.
+        remitente_email = auth.replace("Bearer", "").strip()
+
+        # Se contruye un archivo en formato JSON para el destinatario y mensaje.
+        data = request.get_json()
+        destinatario_email = data.get("destinatario")
+        mensaje = data.get("mensaje")
+
+        # Se valida que el destinatario y mensaje si existan.
+        if not destinatario_email or not mensaje:
+            return jsonify({"error" : "destinatario y mensaje requeridos."}),400
+        
+        # Revision que el destinatario si este registrado en la base de datos.
+        conn = conexion_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM usuarios WHERE user_email = ?",(destinatario_email,))
+        if cursor.fetchone() is None:
+            return jsonify({"error" : "El destinatario no existe."}),404
+        
+        # Fecha del envio.
+        fecha_envio = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Peticiones a la base de datos, donde se guardara y mandara el mensaje.
+        conn = conexion_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+                    INSERT INTO mensajes(remitente_email, destinatario_email, mensaje, fecha_envio) VALUES (?,?,?,?)
+                """,(remitente_email, destinatario_email, mensaje, fecha_envio))
+        conn.commit()
+        conn.close()
+        return jsonify({"mensaje": "Mensaje enviado corrextamente"}),201
+    
+    # Manejo de errores.
+    except sqlite3.Error as error:
+        return jsonify({"error" : f"Error en la base de datos: {str(error)}."})
+    except Exception as error:
+        return jsonify({"error" : f"Error en el programa {str(error)}"})
